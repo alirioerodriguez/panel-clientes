@@ -119,6 +119,12 @@ tr.off td{opacity:.5}
 .field input,.field textarea,.field select{background:var(--carbon);border:1px solid var(--carbon-3);border-radius:3px;padding:8px 10px;font-size:14px}
 .field textarea{min-height:90px;font-family:var(--mono);font-size:12.5px}
 .chk{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--hueso-t)}
+/* Casilla como interruptor (estilo iPhone) */
+.interruptor{appearance:none;-webkit-appearance:none;position:relative;flex:none;width:40px;height:24px;margin:0;border-radius:999px;border:1px solid var(--carbon-3);background:var(--carbon-3);cursor:pointer;transition:background .18s}
+.interruptor::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .18s cubic-bezier(.2,.9,.2,1)}
+.interruptor:checked{background:var(--ok);border-color:transparent}
+.interruptor:checked::after{transform:translateX(16px)}
+.interruptor:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
 .pbtn{background:var(--rojo);border:none;color:#fff;font-weight:700;border-radius:3px;padding:10px 16px}
 .pbtn:hover{background:var(--rojo-2)}
 .preview-wrap{overflow:auto;background:#5b5853;border-radius:4px;padding:18px;max-height:70vh}
@@ -266,7 +272,7 @@ tr.off td{opacity:.5}
       <div class="field"><label for="invLang">Idioma</label><select id="invLang"><option value="es">Español</option><option value="en">English (EE. UU.)</option></select></div>
     </div>
     <div class="row" style="justify-content:space-between">
-      <label class="chk" for="invTbd"><input type="checkbox" id="invTbd"> Incluir ítems con precio a definir</label>
+      <label class="chk" for="invTbd"><input type="checkbox" role="switch" class="interruptor" id="invTbd"> Incluir ítems con precio a definir</label>
       <div class="actions"><span class="msg" id="invMsg"></span><button class="pbtn" id="invPdf" type="button">Descargar PDF</button></div>
     </div>
     <div class="preview-wrap"><div id="invDoc"></div></div>
