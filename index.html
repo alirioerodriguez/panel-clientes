@@ -38,6 +38,10 @@ button{cursor:pointer}
 .mark{width:40px;height:40px;flex-shrink:0}
 .ghost{background:transparent;border:1px solid var(--carbon-3);border-radius:4px;padding:8px 14px;font-size:13px;color:var(--hueso)}
 .ghost:hover{border-color:var(--hueso-t)}
+/* Aviso de cambios sin copia de seguridad y de almacenamiento no protegido */
+.aviso-copia{margin-top:14px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--warn);border-radius:4px;color:var(--hueso);font-size:13px;background:rgba(227,169,59,.08)}
+.aviso-copia b{color:var(--warn)}
+.aviso-copia button{background:transparent;border:1px solid var(--warn);color:var(--warn);border-radius:4px;padding:5px 10px;font-size:12px;cursor:pointer}
 .hub-head{max-width:880px}
 .hub-head .k{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--rojo)}
 .hub-head h1{font-size:clamp(34px,6vw,64px);font-weight:900;letter-spacing:-.035em;line-height:.98;margin-top:10px;text-wrap:balance}
@@ -190,6 +194,7 @@ tr.off td{opacity:.5}
       <input type="file" id="restoreFile" accept=".json" hidden>
     </div>
   </div>
+  <div class="aviso-copia" id="avisoCopia" role="status" hidden></div>
   <header class="hub-head">
     <div class="k">Panel de clientes</div>
     <h1>Videos entregados, cobros y facturas.</h1>
@@ -258,6 +263,7 @@ tr.off td{opacity:.5}
       <div class="field"><label for="invFrom">Período desde</label><input type="date" id="invFrom"></div>
       <div class="field"><label for="invTo">Período hasta</label><input type="date" id="invTo"></div>
       <div class="field"><label for="invTerms">Vencimiento</label><select id="invTerms"><option value="7">7 días</option><option value="15">15 días</option><option value="0">Al recibir</option></select></div>
+      <div class="field"><label for="invLang">Idioma</label><select id="invLang"><option value="es">Español</option><option value="en">English (EE. UU.)</option></select></div>
     </div>
     <div class="row" style="justify-content:space-between">
       <label class="chk" for="invTbd"><input type="checkbox" id="invTbd"> Incluir ítems con precio a definir</label>
@@ -305,7 +311,19 @@ function blank(){return{version:1,nextInvoice:1,profile:{brand:'alirio.motion',n
 let DB;
 try{DB=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){DB=null}
 if(!DB){DB=window.SEED_DATA?JSON.parse(JSON.stringify(window.SEED_DATA)):blank()}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(DB));localStorage.setItem(KEY+'-cambio',String(Date.now()))}catch(e){}avisoCopia()}
+/* Aviso: hay cambios posteriores a la última copia .json, o el navegador no protege los datos */
+let PERSISTE=null;
+function avisoCopia(){
+  const el=document.getElementById('avisoCopia');if(!el)return;
+  let cambio=0,copia=0;try{cambio=+localStorage.getItem(KEY+'-cambio')||0;copia=+localStorage.getItem(KEY+'-copia')||0}catch(e){}
+  const partes=[];
+  if(cambio>copia)partes.push(`<b>Tenés cambios sin copia de seguridad.</b> ${copia?'La última es del '+fmtDate(new Date(copia).toISOString().slice(0,10))+'.':'Todavía no bajaste ninguna.'} <button type="button" data-copia>Bajar copia ahora</button>`);
+  if(PERSISTE===false)partes.push('<span>Este navegador puede borrar los datos si se queda sin espacio: hacé copias seguido.</span>');
+  el.innerHTML=partes.join('');el.hidden=!partes.length;
+  const b=el.querySelector('[data-copia]');if(b)b.onclick=()=>$('#btnBackup').click();
+}
+if(navigator.storage&&navigator.storage.persist){navigator.storage.persisted().then(ya=>ya||navigator.storage.persist()).then(ok=>{PERSISTE=!!ok;avisoCopia()}).catch(()=>{})}
 /* Migración: separa el trabajo de Times Square (50+1 New York) del de Marliseth en datos ya guardados */
 (function migrate(){
   if(DB.clients.some(c=>c.id==='n501'))return;
@@ -450,8 +468,9 @@ $('#btnExport').onclick=()=>{
 
 /* ---------- COPIA ---------- */
 function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
-$('#btnBackup').onclick=()=>downloadBlob(new Blob([JSON.stringify(DB,null,1)],{type:'application/json'}),`panel-clientes-${today()}.json`);
-$('#restoreFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());if(!d.clients)throw 0;DB=d;save();renderHub()}catch(err){}e.target.value=''};
+const marcarCopia=()=>{try{localStorage.setItem(KEY+'-copia',String(Date.now()))}catch(e){}avisoCopia()};
+$('#btnBackup').onclick=()=>{downloadBlob(new Blob([JSON.stringify(DB,null,1)],{type:'application/json'}),`panel-clientes-${today()}.json`);marcarCopia()};
+$('#restoreFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());if(!d.clients)throw 0;DB=d;save();marcarCopia();renderHub()}catch(err){}e.target.value=''};
 
 /* ---------- DATOS DE COBRO ---------- */
 $('#btnSettings').onclick=()=>{const p=DB.profile;$('#sName').value=p.name||'';$('#sLegal').value=p.legal||'';$('#sEmail').value=p.email||'';$('#sCity').value=p.city||'';$('#sNext').value=DB.nextInvoice||1;$('#sPay').value=(p.payments||[]).map(x=>`${x.label} | ${x.detail}`).join('\n');$('#setModal').hidden=false};
@@ -460,11 +479,27 @@ $('#setSave').onclick=()=>{const p=DB.profile;p.name=$('#sName').value;p.legal=$
 
 /* ---------- FACTURA ---------- */
 const invNumber=n=>'AM-'+new Date().getFullYear()+'-'+String(n).padStart(3,'0');
+/* Factura en español o en inglés (Commercial Invoice para clientes de EE. UU.). El idioma queda guardado por cliente. */
+const INV_TXT={
+  es:{doc:'Factura',num:'N.º',issued:'Emisión',due:'Vence',onReceipt:'Al recibir',from:'De',to:'Para',services:'Servicios',al:'al',
+    cols:['Fecha','Descripción','Cant.','Precio','Importe'],special:'trabajo especial',extra:'extra',none:'No hay ítems pendientes en este período.',
+    subtotal:(v,x)=>`Subtotal (${v} video${v===1?"":"s"}${x?' + extras':''})`,paid:'Pago a cuenta',total:'Total a pagar USD',howPay:'Cómo pagar',
+    noPay:'Agregá tus métodos en "Mis datos de cobro".',file:'Factura',thanks:'Gracias por el trabajo en conjunto',
+    note:'Al pagar, enviá el comprobante por WhatsApp o email indicando el número de factura. Las revisiones de cada video están incluidas en el precio. Comprobante comercial de servicios; no reemplaza un comprobante fiscal.'},
+  en:{doc:'Commercial Invoice',num:'No.',issued:'Issued',due:'Due',onReceipt:'Upon receipt',from:'From',to:'Bill to',services:'Services',al:'to',
+    cols:['Date','Description','Qty','Rate','Amount'],special:'special project',extra:'add-on',none:'No pending items in this period.',
+    subtotal:(v,x)=>`Subtotal (${v} video${v===1?"":"s"}${x?' + add-ons':''})`,paid:'Payment received',total:'Total due (USD)',howPay:'Payment instructions',
+    noPay:'Add your payment methods in "Mis datos de cobro".',file:'Invoice',thanks:'Thank you for working together',
+    note:'Please send the payment receipt by WhatsApp or email quoting the invoice number. Revisions for each video are included in the price. Commercial invoice for services rendered; not a tax document.'},
+};
+const invLang=()=>$('#invLang').value==='en'?'en':'es';
+const invDate=iso=>{if(!iso)return'—';if(invLang()!=='en')return fmtDate(iso);const[y,m,d]=iso.split('-');return `${m}/${d}/${y}`};
+const invUsd=n=>invLang()==='en'?'$'+(Math.round((+n||0)*100)/100).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2}):usd(n);
 function openInvoice(){
   const c=client();
   $('#invNum').value=invNumber(DB.nextInvoice||1);
   $('#invDate').value=today();$('#invFrom').value=c.cutoff||'';$('#invTo').value=today();
-  $('#invTbd').checked=false;$('#invMsg').textContent='';
+  $('#invTbd').checked=false;$('#invMsg').textContent='';$('#invLang').value=c.lang==='en'?'en':'es';
   $('#invModal').hidden=false;renderInvoice();
 }
 function addDays(iso,n){const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
@@ -473,38 +508,40 @@ function renderInvoice(){
   const items=c.videos.filter(v=>(v.date||'')>=from&&(v.date||'')<=to&&(v.status==='Pendiente'||(tbd&&v.status==='Precio a definir'))).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   const pays=c.payments.filter(x=>(x.date||'')>=from&&(x.date||'')<=to);
   const sub=items.reduce((a,v)=>a+(+v.units||0)*(+v.rate||0),0),paid=pays.reduce((a,x)=>a+(+x.amount||0),0),due=sub-paid;
-  const terms=+$('#invTerms').value,dueDate=terms?fmtDate(addDays($('#invDate').value||today(),terms)):'Al recibir';
+  const T=INV_TXT[invLang()];
+  const terms=+$('#invTerms').value,dueDate=terms?invDate(addDays($('#invDate').value||today(),terms)):T.onReceipt;
   const vids=items.filter(v=>v.type!=='Extra').reduce((a,v)=>a+(+v.units||0),0);
   $('#invDoc').innerHTML=`<article class="inv" id="invPaper">
    <div class="band">
      <div class="who"><img src="${LOGOS.alirio}" alt=""><div><b>${esc(p.brand||'alirio.motion')}</b><span>${esc(p.role||'')}</span></div></div>
-     <div class="doc"><h2>Factura<i></i></h2><div>N.º ${esc($('#invNum').value)}<br>Emisión ${fmtDate($('#invDate').value)}<br>Vence ${dueDate}</div></div>
+     <div class="doc"><h2>${T.doc}<i></i></h2><div>${T.num} ${esc($('#invNum').value)}<br>${T.issued} ${invDate($('#invDate').value)}<br>${T.due} ${dueDate}</div></div>
    </div>
    <div class="body">
      <div class="parties">
-       <div><div class="lab">De</div><p><b>${esc(p.name)}</b><br>${esc(p.legal||'')}<br>${esc(p.email||'')}<br>${esc(p.city||'')}</p></div>
-       <div><div class="lab">Para</div><p><b>${esc(c.name)}</b><br>${esc(c.company||'')}${c.contact?'<br>'+esc(c.contact):''}${c.email?'<br>'+esc(c.email):''}</p></div>
+       <div><div class="lab">${T.from}</div><p><b>${esc(p.name)}</b><br>${esc(p.legal||'')}<br>${esc(p.email||'')}<br>${esc(p.city||'')}</p></div>
+       <div><div class="lab">${T.to}</div><p><b>${esc(c.name)}</b><br>${esc(c.company||'')}${c.contact?'<br>'+esc(c.contact):''}${c.email?'<br>'+esc(c.email):''}</p></div>
      </div>
-     <div><div class="lab">Servicios · ${fmtDate(from)} al ${fmtDate(to)}</div>
-     <table><thead><tr><th style="width:74px">Fecha</th><th>Descripción</th><th class="n" style="width:46px">Cant.</th><th class="n" style="width:70px">Precio</th><th class="n" style="width:80px">Importe</th></tr></thead>
-     <tbody>${items.length?items.map(v=>`<tr><td class="num">${fmtDate(v.date).slice(0,5)}</td><td>${esc(v.desc)}${v.type==='Especial'?' <small>· trabajo especial</small>':v.type==='Extra'?' <small>· extra</small>':''}</td><td class="n">${v.units}</td><td class="n">${usd(v.rate)}</td><td class="n">${usd((+v.units||0)*(+v.rate||0))}</td></tr>`).join(''):'<tr><td colspan="5">No hay ítems pendientes en este período.</td></tr>'}</tbody></table></div>
+     <div><div class="lab">${T.services} · ${invDate(from)} ${T.al} ${invDate(to)}</div>
+     <table><thead><tr><th style="width:74px">${T.cols[0]}</th><th>${T.cols[1]}</th><th class="n" style="width:46px">${T.cols[2]}</th><th class="n" style="width:70px">${T.cols[3]}</th><th class="n" style="width:80px">${T.cols[4]}</th></tr></thead>
+     <tbody>${items.length?items.map(v=>`<tr><td class="num">${invDate(v.date).slice(0,5)}</td><td>${esc(v.desc)}${v.type==='Especial'?' <small>· '+T.special+'</small>':v.type==='Extra'?' <small>· '+T.extra+'</small>':''}</td><td class="n">${v.units}</td><td class="n">${invUsd(v.rate)}</td><td class="n">${invUsd((+v.units||0)*(+v.rate||0))}</td></tr>`).join(''):'<tr><td colspan="5">'+T.none+'</td></tr>'}</tbody></table></div>
      <div class="totals">
-       <div><span>Subtotal (${vids} videos${items.length-items.filter(v=>v.type!=='Extra').length?' + extras':''})</span><span>${usd(sub)}</span></div>
-       ${pays.map(x=>`<div><span>Pago a cuenta ${fmtDate(x.date)}</span><span>−${usd(x.amount)}</span></div>`).join('')}
-       <div class="due"><span>Total a pagar USD</span><span>${usd(due)}</span></div>
+       <div><span>${T.subtotal(vids,items.length-items.filter(v=>v.type!=='Extra').length)}</span><span>${invUsd(sub)}</span></div>
+       ${pays.map(x=>`<div><span>${T.paid} ${invDate(x.date)}</span><span>−${invUsd(x.amount)}</span></div>`).join('')}
+       <div class="due"><span>${T.total}</span><span>${invUsd(due)}</span></div>
      </div>
-     <div class="paybox"><div class="lab">Cómo pagar</div><div class="pay">${(p.payments||[]).map(x=>`<div><b>${esc(x.label)}</b>${esc(x.detail)}</div>`).join('')||'<div>Agregá tus métodos en "Mis datos de cobro".</div>'}</div></div>
-     <p class="note">Al pagar, enviá el comprobante por WhatsApp o email indicando el número de factura. Las revisiones de cada video están incluidas en el precio. Comprobante comercial de servicios; no reemplaza un comprobante fiscal.</p>
+     <div class="paybox"><div class="lab">${T.howPay}</div><div class="pay">${(p.payments||[]).map(x=>`<div><b>${esc(x.label)}</b>${esc(x.detail)}</div>`).join('')||'<div>'+esc(T.noPay)+'</div>'}</div></div>
+     <p class="note">${T.note}</p>
    </div>
-   <div class="fin"><span>${esc(p.brand||'alirio.motion')} · ${esc(p.email||'')}</span><span>Gracias por el trabajo en conjunto</span></div>
+   <div class="fin"><span>${esc(p.brand||'alirio.motion')} · ${esc(p.email||'')}</span><span>${T.thanks}</span></div>
   </article>`;
   $('#invPdf').dataset.due=due;
 }
-['invNum','invDate','invFrom','invTo','invTerms','invTbd'].forEach(id=>$('#'+id).addEventListener('input',renderInvoice));
+['invNum','invDate','invFrom','invTo','invTerms','invTbd','invLang'].forEach(id=>$('#'+id).addEventListener('input',renderInvoice));
+$('#invLang').addEventListener('change',()=>{const c=client();if(c){c.lang=invLang();save()}});
 $('#btnInvoice').onclick=openInvoice;
 $('#invClose').onclick=()=>$('#invModal').hidden=true;
 $('#invPdf').onclick=async()=>{
-  const el=$('#invPaper'),name=`Factura_${$('#invNum').value}_${client().name.replace(/\s+/g,'_')}.pdf`;
+  const el=$('#invPaper'),name=`${INV_TXT[invLang()].file}_${$('#invNum').value}_${client().name.replace(/\s+/g,'_')}.pdf`;
   $('#invMsg').textContent='Generando PDF…';
   try{
     if(!window.html2pdf)throw new Error('sin librería');
@@ -514,6 +551,7 @@ $('#invPdf').onclick=async()=>{
   }catch(err){$('#invMsg').textContent='No se pudo generar el PDF en este navegador.'}
 };
 
+avisoCopia();
 renderHub();
 </script>
 </body>
