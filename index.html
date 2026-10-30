@@ -51,6 +51,10 @@ button{cursor:pointer}
 .ccard:hover{border-color:var(--oro);transform:translateY(-2px)}
 .ccard .logo-wrap{flex:1;display:grid;place-items:center;background:#fff;border-radius:4px;padding:22px}
 .ccard .logo-wrap img{max-height:120px;width:auto}
+/* Cliente sin logo: sus iniciales en un círculo, en vez de un ícono de imagen rota. */
+.ini{display:grid;place-items:center;aspect-ratio:1;border-radius:50%;background:var(--carbon);color:var(--hueso);font-family:var(--serif);font-weight:700;letter-spacing:.02em;line-height:1;user-select:none}
+.ccard .logo-wrap .ini{width:96px;font-size:34px}
+.chero .badge .ini{width:74px;font-size:26px}
 .ccard .meta{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;min-height:46px}
 .ccard .meta strong{display:block;font-size:17px}
 .ccard .meta small{color:var(--hueso-t)}
@@ -221,7 +225,7 @@ tr.off td{opacity:.5}
     </div>
   </div>
   <section class="chero">
-    <div class="badge"><img id="cLogo" alt="Logo del cliente"></div>
+    <div class="badge"><img id="cLogo" alt="Logo del cliente"><span id="cIni" class="ini" role="img" hidden></span></div>
     <div>
       <div class="eyebrow">Control de videos · <span id="cYear">2026</span></div>
       <h1 id="cTitle"></h1>
@@ -352,12 +356,18 @@ function stats(c){
   return{y2026,since,billable,tbd,paid,owed:billable-paid};
 }
 
+/* Iniciales de un cliente: primeras letras de hasta 2 palabras, sin contar números, símbolos ni artículos («50+1 New York» → NY, «Café del Sur» → CS). */
+function iniciales(name){
+  const w=String(name||'').split(/\s+/).map(x=>x.replace(/[^\p{L}]/gu,'')).filter(x=>x&&!/^(de|del|la|las|el|los|y|e|the|of|and)$/i.test(x));
+  return (w.length>1?w[0][0]+w[1][0]:(w[0]||'?').slice(0,2)).toLocaleUpperCase('es');
+}
+
 /* ---------- HUB ---------- */
 function renderHub(){
   $('#hub').hidden=false;$('#client').hidden=true;
   const el=$('#clients');
   el.innerHTML=DB.clients.map(c=>{const s=stats(c);return `<button class="ccard" data-id="${c.id}" data-theme="${c.theme}" type="button">
-    <div class="logo-wrap"><img src="${LOGOS[c.theme]||''}" alt="${esc(c.name)}"></div>
+    <div class="logo-wrap">${LOGOS[c.theme]?`<img src="${LOGOS[c.theme]}" alt="${esc(c.name)}">`:`<span class="ini" role="img" aria-label="${esc(c.name)}">${esc(iniciales(c.name))}</span>`}</div>
     <div class="meta"><div><strong>${esc(c.name)}</strong><small>${esc(c.company||'')} · ${c.videos.length} registros</small></div>
     <div class="owed">${usd(s.owed)}<small>saldo</small></div></div></button>`}).join('')+
     `<div class="ccard empty"><span>Próximo cliente</span></div>`;
@@ -368,7 +378,7 @@ function renderHub(){
 function openClient(id){
   cur=id;const c=client();
   $('#hub').hidden=true;$('#client').hidden=false;window.scrollTo(0,0);
-  $('#client').dataset.theme=c.theme;$('#cLogo').src=LOGOS[c.theme]||'';
+  $('#client').dataset.theme=c.theme;{const lg=LOGOS[c.theme];$('#cLogo').hidden=!lg;if(lg)$('#cLogo').src=lg;const ini=$('#cIni');ini.hidden=!!lg;ini.textContent=iniciales(c.name);ini.setAttribute('aria-label',c.name);}
   $('#cTitle').innerHTML=`${esc(c.name.split(' ')[0])} <em>${esc(c.name.split(' ').slice(1).join(' '))}</em>`;
   $('#cSub').textContent=`${c.company||''}${c.contact?' · '+c.contact.replace(/^Atención:\s*/,''):''}${c.email?' · '+c.email:''} · Tarifa ${usd(c.rate)} por video, extras ${usd(c.extra)}`;
   $('#cutoff').value=c.cutoff||'';
