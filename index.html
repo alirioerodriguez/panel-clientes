@@ -162,6 +162,21 @@ tr.off td{opacity:.5}
 .inv .note{font-size:11px;color:#6B6863;line-height:1.5}
 .inv .fin{padding:16px 48px;border-top:1px solid #E6E2DC;display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:#77736D;letter-spacing:.06em}
 
+/* ===== TEMA PROPIO (editor de clientes): los colores llegan como variables en línea ===== */
+.client[data-theme="custom"]{background:radial-gradient(1000px 480px at 90% -10%,var(--brillo),transparent 62%),var(--marino)}
+.client[data-theme="custom"] .btn.gold{color:var(--sobre-oro)}
+.client[data-theme="custom"] .kpi.owe{background:var(--marino-3)}
+.ccard[data-theme="custom"]:hover{border-color:var(--cian)}
+.ccard.empty{cursor:pointer;font:inherit;color:var(--hueso-t)}
+.ccard.empty:hover{border-color:var(--rojo);color:var(--hueso)}
+.colores{display:flex;gap:12px;flex-wrap:wrap}
+.colores .field{flex:1 1 120px}
+.colores input[type=color]{height:42px;padding:3px;cursor:pointer}
+.muestra{border-radius:4px;padding:16px 18px;display:flex;align-items:center;gap:14px;border:1px solid var(--carbon-3)}
+.muestra img{height:44px;width:auto;background:#fff;border-radius:3px;padding:4px}
+.muestra b{font-family:var(--serif);font-size:20px}
+.muestra span{border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;margin-left:auto}
+
 /* ===== TEMA 50+1 NEW YORK (morado profundo + lila + destellos del globo) ===== */
 .client[data-theme="n501"]{
   --marino:#12061F; --marino-2:#1D0B35; --marino-3:#3B1670; --cian:#B083DF; --cian-claro:#D3B8F3; --oro:#E58BE8; --oro-claro:#F6C6F5;
@@ -217,6 +232,7 @@ tr.off td{opacity:.5}
       <label class="btn" for="xlsxFile" style="cursor:pointer">Importar Excel</label>
       <input type="file" id="xlsxFile" accept=".xlsx,.xls" hidden>
       <button class="btn" id="btnExport" type="button">Exportar Excel</button>
+      <button class="btn" id="btnEditClient" type="button">Editar cliente</button>
       <button class="btn gold" id="btnInvoice" type="button">Generar factura</button>
     </div>
   </div>
@@ -276,6 +292,31 @@ tr.off td{opacity:.5}
       <div class="actions"><span class="msg" id="invMsg"></span><button class="pbtn" id="invPdf" type="button">Descargar PDF</button></div>
     </div>
     <div class="preview-wrap"><div id="invDoc"></div></div>
+  </div>
+</div>
+
+<!-- ===== MODAL CLIENTE ===== -->
+<div class="modal" id="cliModal" hidden>
+  <div class="panel" style="max-width:680px">
+    <div class="row" style="justify-content:space-between;align-items:center"><h3 id="cliTitulo">Nuevo cliente</h3><button class="ghost" id="cliClose" type="button">Cerrar</button></div>
+    <div class="row">
+      <div class="field"><label for="eName">Nombre</label><input id="eName" placeholder="Ej.: Estudio Sur"></div>
+      <div class="field"><label for="eCompany">Empresa o proyecto</label><input id="eCompany"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label for="eContact">Contacto</label><input id="eContact"></div>
+      <div class="field"><label for="eEmail">Email</label><input id="eEmail" type="email"></div>
+      <div class="field" style="flex:0 1 110px"><label for="eRate">Tarifa USD</label><input id="eRate" type="number" min="0" step="0.5"></div>
+      <div class="field" style="flex:0 1 110px"><label for="eExtra">Extra USD</label><input id="eExtra" type="number" min="0" step="0.5"></div>
+    </div>
+    <div class="colores">
+      <div class="field"><label for="eFondo">Fondo</label><input id="eFondo" type="color"></div>
+      <div class="field"><label for="eAcento">Acento</label><input id="eAcento" type="color"></div>
+      <div class="field"><label for="eDestaque">Destacado (saldo y botón)</label><input id="eDestaque" type="color"></div>
+      <div class="field"><label for="eLogo">Logo (PNG o JPG)</label><input id="eLogo" type="file" accept="image/*"></div>
+    </div>
+    <div class="muestra" id="eMuestra"><img id="eMuestraLogo" alt="" hidden><b id="eMuestraNombre">Cliente</b><span>Generar factura</span></div>
+    <div class="row" style="justify-content:space-between"><button class="ghost" id="cliDelete" type="button" hidden>Borrar cliente</button><span class="msg" id="cliMsg"></span><button class="pbtn" id="cliSave" type="button">Guardar</button></div>
   </div>
 </div>
 
@@ -356,19 +397,20 @@ function stats(c){
 function renderHub(){
   $('#hub').hidden=false;$('#client').hidden=true;
   const el=$('#clients');
-  el.innerHTML=DB.clients.map(c=>{const s=stats(c);return `<button class="ccard" data-id="${c.id}" data-theme="${c.theme}" type="button">
-    <div class="logo-wrap"><img src="${LOGOS[c.theme]||''}" alt="${esc(c.name)}"></div>
+  el.innerHTML=DB.clients.map(c=>{const s=stats(c);return `<button class="ccard" data-id="${c.id}" data-theme="${c.theme}" style="${c.colors?'--cian:'+c.colors.acento:''}" type="button">
+    <div class="logo-wrap">${logoDe(c)?`<img src="${logoDe(c)}" alt="${esc(c.name)}">`:`<b style="font-family:var(--serif);font-size:28px;color:#1C1B1A">${esc(c.name)}</b>`}</div>
     <div class="meta"><div><strong>${esc(c.name)}</strong><small>${esc(c.company||'')} · ${c.videos.length} registros</small></div>
     <div class="owed">${usd(s.owed)}<small>saldo</small></div></div></button>`}).join('')+
-    `<div class="ccard empty"><span>Próximo cliente</span></div>`;
+    `<button class="ccard empty" id="btnNewClient" type="button"><span>+ Nuevo cliente</span></button>`;
   el.querySelectorAll('.ccard[data-id]').forEach(b=>b.onclick=()=>openClient(b.dataset.id));
+  $('#btnNewClient').onclick=()=>abrirEditor(null);
 }
 
 /* ---------- CLIENTE ---------- */
 function openClient(id){
   cur=id;const c=client();
   $('#hub').hidden=true;$('#client').hidden=false;window.scrollTo(0,0);
-  $('#client').dataset.theme=c.theme;$('#cLogo').src=LOGOS[c.theme]||'';
+  $('#client').dataset.theme=c.theme;$('#client').style.cssText=c.colors?estiloVars(c.colors):'';$('#cLogo').src=logoDe(c);$('#cLogo').parentElement.hidden=!logoDe(c);
   $('#cTitle').innerHTML=`${esc(c.name.split(' ')[0])} <em>${esc(c.name.split(' ').slice(1).join(' '))}</em>`;
   $('#cSub').textContent=`${c.company||''}${c.contact?' · '+c.contact.replace(/^Atención:\s*/,''):''}${c.email?' · '+c.email:''} · Tarifa ${usd(c.rate)} por video, extras ${usd(c.extra)}`;
   $('#cutoff').value=c.cutoff||'';
@@ -556,6 +598,73 @@ $('#invPdf').onclick=async()=>{
     $('#invMsg').textContent='PDF descargado.';
   }catch(err){$('#invMsg').textContent='No se pudo generar el PDF en este navegador.'}
 };
+
+/* ---------- EDITOR DE CLIENTES ----------
+   Cliente nuevo o existente: datos, logo y 3 colores. Con colores propios el cliente pasa a theme "custom"
+   y las variables del tema (fondo, acento, destacado y sus tonos) se calculan acá, sin escribir CSS. */
+const TEMAS_BASE={m8a:{fondo:'#08182e',acento:'#189bd7',destaque:'#d9a441'},n501:{fondo:'#12061f',acento:'#b083df',destaque:'#e58be8'}};
+const logoDe=c=>c.logo||LOGOS[c.theme]||'';
+const rgb=h=>{h=String(h).replace('#','');if(h.length===3)h=h.replace(/./g,x=>x+x);const n=parseInt(h,16)||0;return[n>>16&255,n>>8&255,n&255]};
+const hex=a=>'#'+a.map(x=>Math.round(Math.max(0,Math.min(255,x))).toString(16).padStart(2,'0')).join('');
+const mezcla=(a,b,t)=>{const x=rgb(a),y=rgb(b);return hex(x.map((v,i)=>v+(y[i]-v)*t))};
+const luz=h=>{const[r,g,b]=rgb(h).map(v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)});return .2126*r+.7152*g+.0722*b};
+const rgba=(h,a)=>`rgba(${rgb(h).join(',')},${a})`;
+function estiloVars(k){
+  const oscuro=luz(k.fondo)<.18, tx=oscuro?'#EEF1F4':'#16181C', hacia=oscuro?'#ffffff':'#000000';
+  const v={'--marino':k.fondo,'--marino-2':mezcla(k.fondo,hacia,.07),'--marino-3':mezcla(k.fondo,hacia,.18),
+    '--cian':k.acento,'--cian-claro':mezcla(k.acento,hacia,.3),'--oro':k.destaque,'--oro-claro':mezcla(k.destaque,hacia,.35),
+    '--tx':tx,'--tx-t':rgba(tx,.64),'--ln':rgba(tx,.14),'--brillo':rgba(k.acento,.2),'--sobre-oro':luz(k.destaque)>.4?'#111111':'#ffffff'};
+  return Object.entries(v).map(([a,b])=>`${a}:${b}`).join(';');
+}
+let EDIT=null; // {id|null, logo}
+function coloresDe(c){return c&&c.colors?c.colors:(c&&TEMAS_BASE[c.theme])||{fondo:'#1c2230',acento:'#4fa3e0',destaque:'#e8b04a'}}
+function abrirEditor(id){
+  const c=id?DB.clients.find(x=>x.id===id):null;
+  EDIT={id,logo:c?logoDe(c):''};
+  $('#cliTitulo').textContent=c?'Editar cliente':'Nuevo cliente';
+  $('#eName').value=c?c.name:'';$('#eCompany').value=c?c.company||'':'';$('#eContact').value=c?c.contact||'':'';$('#eEmail').value=c?c.email||'':'';
+  $('#eRate').value=c?c.rate:20;$('#eExtra').value=c?c.extra:5;
+  const k=coloresDe(c);$('#eFondo').value=k.fondo;$('#eAcento').value=k.acento;$('#eDestaque').value=k.destaque;
+  $('#eLogo').value='';$('#cliMsg').textContent='';
+  const del=$('#cliDelete');del.hidden=!c;delete del.dataset.armed;del.textContent='Borrar cliente';del.style.color='';
+  $('#cliModal').hidden=false;muestraEditor();$('#eName').focus();
+}
+function muestraEditor(){
+  const k={fondo:$('#eFondo').value,acento:$('#eAcento').value,destaque:$('#eDestaque').value};
+  const m=$('#eMuestra'),v=Object.fromEntries(estiloVars(k).split(';').map(x=>x.split(':')));
+  m.style.background=k.fondo;m.style.color=v['--tx'];m.querySelector('b').style.color=v['--tx'];
+  const bt=m.querySelector('span');bt.style.background=k.destaque;bt.style.color=v['--sobre-oro'];
+  $('#eMuestraNombre').textContent=$('#eName').value||'Cliente';
+  const im=$('#eMuestraLogo');im.hidden=!EDIT.logo;if(EDIT.logo)im.src=EDIT.logo;
+}
+['#eFondo','#eAcento','#eDestaque','#eName'].forEach(s=>$(s).addEventListener('input',muestraEditor));
+$('#eLogo').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const img=new Image(),url=URL.createObjectURL(f);
+  img.onload=()=>{const max=320,r=Math.min(1,max/Math.max(img.width,img.height)),cv=document.createElement('canvas');
+    cv.width=Math.round(img.width*r);cv.height=Math.round(img.height*r);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+    EDIT.logo=cv.toDataURL('image/png');URL.revokeObjectURL(url);muestraEditor()};
+  img.onerror=()=>{$('#cliMsg').textContent='No se pudo leer esa imagen.';URL.revokeObjectURL(url)};
+  img.src=url;
+};
+$('#cliClose').onclick=()=>{$('#cliModal').hidden=true};
+$('#cliSave').onclick=()=>{
+  const name=$('#eName').value.trim();if(!name){$('#cliMsg').textContent='Falta el nombre.';$('#eName').focus();return}
+  let c=EDIT.id?DB.clients.find(x=>x.id===EDIT.id):null;
+  if(!c){c={id:'c'+Date.now().toString(36),theme:'custom',cutoff:today(),videos:[],payments:[]};DB.clients.push(c)}
+  Object.assign(c,{name,company:$('#eCompany').value.trim(),contact:$('#eContact').value.trim(),email:$('#eEmail').value.trim(),rate:+$('#eRate').value||0,extra:+$('#eExtra').value||0});
+  const k={fondo:$('#eFondo').value,acento:$('#eAcento').value,destaque:$('#eDestaque').value},base=TEMAS_BASE[c.theme];
+  // Un cliente con tema de fábrica lo conserva mientras no se le cambien los colores
+  const igual=base&&!c.colors&&base.fondo===k.fondo&&base.acento===k.acento&&base.destaque===k.destaque;
+  if(!igual){if(!c.logo&&LOGOS[c.theme])c.logo=LOGOS[c.theme];c.colors=k;c.theme='custom'}
+  if(EDIT.logo&&EDIT.logo!==LOGOS[c.theme])c.logo=EDIT.logo;
+  save();$('#cliModal').hidden=true;
+  if(cur===c.id)openClient(c.id);else renderHub();
+};
+$('#cliDelete').onclick=e=>askDelete(e.currentTarget,()=>{
+  DB.clients=DB.clients.filter(x=>x.id!==EDIT.id);save();$('#cliModal').hidden=true;cur=null;renderHub();
+});
+$('#btnEditClient').onclick=()=>abrirEditor(cur);
 
 avisoCopia();
 renderHub();
