@@ -285,6 +285,8 @@ tr.off td{opacity:.5}
       <div class="field"><label for="invFrom">Período desde</label><input type="date" id="invFrom"></div>
       <div class="field"><label for="invTo">Período hasta</label><input type="date" id="invTo"></div>
       <div class="field"><label for="invTerms">Vencimiento</label><select id="invTerms"><option value="7">7 días</option><option value="15">15 días</option><option value="0">Al recibir</option></select></div>
+      <div class="field"><label for="invFE">Factura E N.º (opcional)</label><input id="invFE" placeholder="0001-00000123"></div>
+      <div class="field"><label for="invCAE">CAE (opcional)</label><input id="invCAE" inputmode="numeric" placeholder="14 dígitos"></div>
       <div class="field"><label for="invLang">Idioma</label><select id="invLang"><option value="es">Español</option><option value="en">English (EE. UU.)</option></select></div>
     </div>
     <div class="row" style="justify-content:space-between">
@@ -369,7 +371,14 @@ function migrar(d){
 /* Si lo guardado es de una versión más nueva NO se arranca con datos de ejemplo (el próximo guardado los pisaría): se avisa y se frena. */
 try{DB=migrar(JSON.parse(localStorage.getItem(KEY)||'null'))}catch(e){DB=null;if(e&&e.nueva){alert(e.message);throw e}}
 if(!DB){DB=window.SEED_DATA?JSON.parse(JSON.stringify(window.SEED_DATA)):blank()}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(DB));localStorage.setItem(KEY+'-cambio',String(Date.now()))}catch(e){}avisoCopia()}
+/* Si el navegador se queda sin espacio, setItem falla: antes se perdía en silencio. Ahora se avisa. */
+let GUARDADO_FALLO=false;
+function save(){try{localStorage.setItem(KEY,JSON.stringify(DB));localStorage.setItem(KEY+'-cambio',String(Date.now()));GUARDADO_FALLO=false}catch(e){GUARDADO_FALLO=true}avisoCopia();medirCuota()}
+/* Espacio: localStorage da unos 5 MiB por origen (unos 5 millones de caracteres en los navegadores comunes). Se cuenta por caracteres, que es lo más prudente, y se avisa desde el 80 %. */
+const TOPE_LS=5*1024*1024,UMBRAL_ESPACIO=.8,MiB=b=>(b/1048576).toFixed(1).replace('.',',');
+function usoLocal(){let n=0;try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);n+=k.length+(localStorage.getItem(k)||'').length}}catch(e){}return n}
+let CUOTA=null; // {usage,quota} según navigator.storage.estimate(), si el navegador lo da
+function medirCuota(){if(navigator.storage&&navigator.storage.estimate)navigator.storage.estimate().then(r=>{CUOTA=r&&r.quota?r:null;avisoCopia()}).catch(()=>{})}
 /* Aviso: hay cambios posteriores a la última copia .json, o el navegador no protege los datos */
 let PERSISTE=null;
 function avisoCopia(){
@@ -377,6 +386,10 @@ function avisoCopia(){
   let cambio=0,copia=0;try{cambio=+localStorage.getItem(KEY+'-cambio')||0;copia=+localStorage.getItem(KEY+'-copia')||0}catch(e){}
   const partes=[];
   if(cambio>copia)partes.push(`<b>Tenés cambios sin copia de seguridad.</b> ${copia?'La última es del '+fmtDate(new Date(copia).toISOString().slice(0,10))+'.':'Todavía no bajaste ninguna.'} <button type="button" data-copia>Bajar copia ahora</button>`);
+  if(GUARDADO_FALLO)partes.push('<b>No se pudo guardar el último cambio: el navegador se quedó sin espacio.</b> Bajá una copia ahora y sacá logos pesados o clientes viejos.');
+  else{const uso=usoLocal();
+    if(uso>=TOPE_LS*UMBRAL_ESPACIO)partes.push(`<span><b>Poco espacio:</b> el panel ocupa ${MiB(uso)} MiB de unos ${MiB(TOPE_LS)} MiB que da el navegador. Bajá una copia y sacá logos pesados o clientes viejos.</span>`);
+    else if(CUOTA&&CUOTA.usage/CUOTA.quota>=UMBRAL_ESPACIO)partes.push('<span><b>Poco espacio:</b> el navegador está llegando al límite de lo que reservó para este sitio. Bajá una copia.</span>')}
   if(PERSISTE===false)partes.push('<span>Este navegador puede borrar los datos si se queda sin espacio: hacé copias seguido.</span>');
   el.innerHTML=partes.join('');el.hidden=!partes.length;
   const b=el.querySelector('[data-copia]');if(b)b.onclick=()=>$('#btnBackup').click();
@@ -419,7 +432,7 @@ function renderHub(){
 
 /* ---------- CLIENTE ---------- */
 function openClient(id){
-  cur=id;const c=client();
+  cur=id;FILAS=FILAS_POR_VEZ;const c=client();
   $('#hub').hidden=true;$('#client').hidden=false;window.scrollTo(0,0);
   $('#client').dataset.theme=c.theme;$('#client').style.cssText=c.colors?estiloVars(c.colors):'';$('#cLogo').src=logoDe(c);$('#cLogo').parentElement.hidden=!logoDe(c);
   $('#cTitle').innerHTML=`${esc(c.name.split(' ')[0])} <em>${esc(c.name.split(' ').slice(1).join(' '))}</em>`;
@@ -437,9 +450,11 @@ function renderKpis(){
    <div class="kpi owe"><span>Saldo pendiente</span><b class="num">${usd(s.owed)}</b><small>${s.tbd?usd(s.owed-s.tbd)+' sin ítems a definir':'todo con precio cerrado'}</small></div>`;
 }
 const opt=(arr,val)=>arr.map(o=>`<option${o===val?' selected':''}>${o}</option>`).join('');
+/* Con miles de filas (un Excel grande) dibujar todo congelaba la página: se dibujan 300 y un botón muestra más. */
+const FILAS_POR_VEZ=300;let FILAS=FILAS_POR_VEZ;
 function renderVideos(){
   const c=client();
-  $('#vTable tbody').innerHTML=c.videos.map((v,i)=>`<tr data-i="${i}" class="${v.status==='No se cobra'?'off':''}">
+  $('#vTable tbody').innerHTML=c.videos.slice(0,FILAS).map((v,i)=>`<tr data-i="${i}" class="${v.status==='No se cobra'?'off':''}">
     <td><input data-k="n" value="${esc(v.n)}" aria-label="Número"></td>
     <td><textarea data-k="file" rows="1" aria-label="Carpeta">${esc(v.file)}</textarea></td>
     <td><textarea data-k="desc" rows="1" aria-label="Descripción">${esc(v.desc)}</textarea>${v.link?`<a class="lnk" href="${esc(v.link)}" target="_blank" rel="noopener">Abrir carpeta ↗</a>`:''}</td>
@@ -450,9 +465,12 @@ function renderVideos(){
     <td><input class="r num" type="number" min="0" step="1" data-k="rate" value="${v.rate}" aria-label="Tarifa"></td>
     <td class="sub">${usd((+v.units||0)*(+v.rate||0))}</td>
     <td><textarea data-k="note" rows="1" aria-label="Nota">${esc(v.note)}</textarea></td>
-    <td><button class="del" data-del="${i}" type="button" aria-label="Borrar fila">×</button></td></tr>`).join('');
+    <td><button class="del" data-del="${i}" type="button" aria-label="Borrar fila">×</button></td></tr>`).join('')
+    +(c.videos.length>FILAS?`<tr class="mas"><td colspan="11"><button class="ghost" id="verMas" type="button">Mostrar ${Math.min(FILAS_POR_VEZ,c.videos.length-FILAS)} más (hay ${c.videos.length}, se ven ${FILAS})</button></td></tr>`:'');
+  const vm=$('#verMas');if(vm)vm.onclick=()=>{FILAS+=FILAS_POR_VEZ;renderVideos()};
   const grow=ta=>{ta.style.height='auto';ta.style.height=ta.scrollHeight+'px'};
-  requestAnimationFrame(()=>$('#vTable tbody').querySelectorAll('textarea').forEach(grow));
+  /* Primero se leen todas las alturas y después se escriben: leer y escribir de a una fuerza un recálculo por celda. */
+  requestAnimationFrame(()=>{const tas=[...$('#vTable tbody').querySelectorAll('textarea')];tas.forEach(ta=>ta.style.height='auto');const hs=tas.map(ta=>ta.scrollHeight);tas.forEach((ta,k)=>ta.style.height=hs[k]+'px')});
   $('#vTable tbody').querySelectorAll('textarea').forEach(ta=>ta.addEventListener('input',()=>grow(ta)));
   $('#vTable tbody').querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('input',e=>{
     const tr=e.target.closest('tr'),i=+tr.dataset.i,k=e.target.dataset.k,v=client().videos[i];
@@ -481,7 +499,7 @@ function renderPays(){
 }
 function askDelete(btn,fn){ if(btn.dataset.armed){fn();return} btn.dataset.armed='1';btn.textContent='¿Borrar?';btn.style.color='var(--bad)';setTimeout(()=>{if(btn.isConnected){delete btn.dataset.armed;btn.textContent='×';btn.style.color=''}},2500) }
 
-$('#addVideo').onclick=()=>{const c=client();const nums=c.videos.map(v=>parseInt(v.n)).filter(n=>!isNaN(n));c.videos.push({n:String((nums.length?Math.max(...nums):0)+1),file:'',desc:'',date:today(),type:'Video',status:'Pendiente',units:1,rate:c.rate,via:'',link:'',note:''});save();renderVideos();renderKpis();const ta=$('#vTable tbody tr:last-child [data-k=desc]');ta&&ta.focus()};
+$('#addVideo').onclick=()=>{const c=client();const nums=c.videos.map(v=>parseInt(v.n)).filter(n=>!isNaN(n));FILAS=Math.max(FILAS,c.videos.length+1);c.videos.push({n:String((nums.length?Math.max(...nums):0)+1),file:'',desc:'',date:today(),type:'Video',status:'Pendiente',units:1,rate:c.rate,via:'',link:'',note:''});save();renderVideos();renderKpis();const ta=$('#vTable tbody tr[data-i="'+(c.videos.length-1)+'"] [data-k=desc]');ta&&ta.focus()};
 $('#addPay').onclick=()=>{client().payments.push({date:today(),amount:0,method:'',ref:'',note:''});save();renderPays();renderKpis()};
 $('#cutoff').oninput=e=>{client().cutoff=e.target.value;save();renderKpis()};
 $('#btnBack').onclick=()=>{cur=null;renderHub()};
@@ -544,11 +562,13 @@ const INV_TXT={
     cols:['Fecha','Descripción','Cant.','Precio','Importe'],special:'trabajo especial',extra:'extra',none:'No hay ítems pendientes en este período.',
     subtotal:(v,x)=>`Subtotal (${v} video${v===1?"":"s"}${x?' + extras':''})`,paid:'Pago a cuenta',total:'Total a pagar USD',howPay:'Cómo pagar',
     noPay:'Agregá tus métodos en "Mis datos de cobro".',file:'Factura',thanks:'Gracias por el trabajo en conjunto',
+    legal:'Detalle de la Factura E',cae:'CAE',
     note:'Al pagar, enviá el comprobante por WhatsApp o email indicando el número de factura. Las revisiones de cada video están incluidas en el precio. Comprobante comercial de servicios; no reemplaza un comprobante fiscal.'},
   en:{doc:'Commercial Invoice',num:'No.',issued:'Issued',due:'Due',onReceipt:'Upon receipt',from:'From',to:'Bill to',services:'Services',al:'to',
     cols:['Date','Description','Qty','Rate','Amount'],special:'special project',extra:'add-on',none:'No pending items in this period.',
     subtotal:(v,x)=>`Subtotal (${v} video${v===1?"":"s"}${x?' + add-ons':''})`,paid:'Payment received',total:'Total due (USD)',howPay:'Payment instructions',
     noPay:'Add your payment methods in "Mis datos de cobro".',file:'Invoice',thanks:'Thank you for working together',
+    legal:'Detail of Factura E (Argentine tax invoice)',cae:'CAE',
     note:'Please send the payment receipt by WhatsApp or email quoting the invoice number. Revisions for each video are included in the price. Commercial invoice for services rendered; not a tax document.'},
 };
 const invLang=()=>$('#invLang').value==='en'?'en':'es';
@@ -558,7 +578,7 @@ function openInvoice(){
   const c=client();
   $('#invNum').value=invNumber(DB.nextInvoice||1);
   $('#invDate').value=today();$('#invFrom').value=c.cutoff||'';$('#invTo').value=today();
-  $('#invTbd').checked=false;$('#invMsg').textContent='';$('#invLang').value=c.lang==='en'?'en':'es';
+  $('#invTbd').checked=false;$('#invFE').value='';$('#invCAE').value='';$('#invMsg').textContent='';$('#invLang').value=c.lang==='en'?'en':'es';
   $('#invModal').hidden=false;renderInvoice();
 }
 function addDays(iso,n){const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
@@ -569,6 +589,7 @@ function renderInvoice(){
   const sub=items.reduce((a,v)=>a+(+v.units||0)*(+v.rate||0),0),paid=pays.reduce((a,x)=>a+(+x.amount||0),0),due=sub-paid;
   const T=INV_TXT[invLang()];
   const terms=+$('#invTerms').value,dueDate=terms?invDate(addDays($('#invDate').value||today(),terms)):T.onReceipt;
+  const fe=$('#invFE').value.trim(),cae=$('#invCAE').value.trim();
   const vids=items.filter(v=>v.type!=='Extra').reduce((a,v)=>a+(+v.units||0),0);
   $('#invDoc').innerHTML=`<article class="inv" id="invPaper">
    <div class="band">
@@ -589,13 +610,14 @@ function renderInvoice(){
        <div class="due"><span>${T.total}</span><span>${invUsd(due)}</span></div>
      </div>
      <div class="paybox"><div class="lab">${T.howPay}</div><div class="pay">${(p.payments||[]).map(x=>`<div><b>${esc(x.label)}</b>${esc(x.detail)}</div>`).join('')||'<div>'+esc(T.noPay)+'</div>'}</div></div>
+     ${fe||cae?`<p class="note"><b>${T.legal}${fe?' '+T.num+' '+esc(fe):''}${cae?' · '+T.cae+' '+esc(cae):''}</b></p>`:''}
      <p class="note">${T.note}</p>
    </div>
    <div class="fin"><span>${esc(p.brand||'alirio.motion')} · ${esc(p.email||'')}</span><span>${T.thanks}</span></div>
   </article>`;
   $('#invPdf').dataset.due=due;
 }
-['invNum','invDate','invFrom','invTo','invTerms','invTbd','invLang'].forEach(id=>$('#'+id).addEventListener('input',renderInvoice));
+['invNum','invDate','invFrom','invTo','invTerms','invTbd','invLang','invFE','invCAE'].forEach(id=>$('#'+id).addEventListener('input',renderInvoice));
 $('#invLang').addEventListener('change',()=>{const c=client();if(c){c.lang=invLang();save()}});
 $('#btnInvoice').onclick=openInvoice;
 $('#invClose').onclick=()=>$('#invModal').hidden=true;
@@ -677,7 +699,7 @@ $('#cliDelete').onclick=e=>askDelete(e.currentTarget,()=>{
 });
 $('#btnEditClient').onclick=()=>abrirEditor(cur);
 
-avisoCopia();
+avisoCopia();medirCuota();
 renderHub();
 </script>
 </body>
