@@ -362,11 +362,12 @@ const SCHEMA=1;
 function migrar(d){
   if(!d||typeof d!=='object'||!Array.isArray(d.clients))throw new Error('El archivo no es una copia del panel.');
   const v=Number(d.version)||0;
-  if(v>SCHEMA)throw new Error('Esta copia es de una versión más nueva del panel. Actualizá la página y probá de nuevo.');
+  if(v>SCHEMA){const e=new Error('Esta copia es de una versión más nueva del panel. Actualizá la página y probá de nuevo.');e.nueva=true;throw e}
   if(v<1){d.nextInvoice=d.nextInvoice||1}
   d.version=SCHEMA;return d;
 }
-try{DB=migrar(JSON.parse(localStorage.getItem(KEY)||'null'))}catch(e){DB=null}
+/* Si lo guardado es de una versión más nueva NO se arranca con datos de ejemplo (el próximo guardado los pisaría): se avisa y se frena. */
+try{DB=migrar(JSON.parse(localStorage.getItem(KEY)||'null'))}catch(e){DB=null;if(e&&e.nueva){alert(e.message);throw e}}
 if(!DB){DB=window.SEED_DATA?JSON.parse(JSON.stringify(window.SEED_DATA)):blank()}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(DB));localStorage.setItem(KEY+'-cambio',String(Date.now()))}catch(e){}avisoCopia()}
 /* Aviso: hay cambios posteriores a la última copia .json, o el navegador no protege los datos */
