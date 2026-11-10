@@ -356,7 +356,17 @@ const fmtDate=iso=>{if(!iso)return'—';const[y,m,d]=iso.split('-');return `${d}
 
 function blank(){return{version:1,nextInvoice:1,profile:{brand:'alirio.motion',name:'Alirio Rodríguez',legal:'',role:'Edición de video y motion graphics',email:'',city:'Buenos Aires, Argentina',payments:[]},clients:[{id:'marliseth',name:'Marliseth Ochoa',company:'Our North by 8A',email:'',theme:'m8a',rate:20,extra:5,cutoff:'2026-07-01',videos:[],payments:[]},JSON.parse(JSON.stringify(N501))]}}
 let DB;
-try{DB=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){DB=null}
+const SCHEMA=1;
+/* Copias con versión: toda copia .json o dato guardado pasa por acá antes de usarse. Cuando cambie la estructura,
+   se suma un paso `if(v<2){…}` y las copias viejas siguen abriendo. Una copia de una versión más nueva se rechaza. */
+function migrar(d){
+  if(!d||typeof d!=='object'||!Array.isArray(d.clients))throw new Error('El archivo no es una copia del panel.');
+  const v=Number(d.version)||0;
+  if(v>SCHEMA)throw new Error('Esta copia es de una versión más nueva del panel. Actualizá la página y probá de nuevo.');
+  if(v<1){d.nextInvoice=d.nextInvoice||1}
+  d.version=SCHEMA;return d;
+}
+try{DB=migrar(JSON.parse(localStorage.getItem(KEY)||'null'))}catch(e){DB=null}
 if(!DB){DB=window.SEED_DATA?JSON.parse(JSON.stringify(window.SEED_DATA)):blank()}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(DB));localStorage.setItem(KEY+'-cambio',String(Date.now()))}catch(e){}avisoCopia()}
 /* Aviso: hay cambios posteriores a la última copia .json, o el navegador no protege los datos */
@@ -518,7 +528,7 @@ $('#btnExport').onclick=()=>{
 function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
 const marcarCopia=()=>{try{localStorage.setItem(KEY+'-copia',String(Date.now()))}catch(e){}avisoCopia()};
 $('#btnBackup').onclick=()=>{downloadBlob(new Blob([JSON.stringify(DB,null,1)],{type:'application/json'}),`panel-clientes-${today()}.json`);marcarCopia()};
-$('#restoreFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());if(!d.clients)throw 0;DB=d;save();marcarCopia();renderHub()}catch(err){}e.target.value=''};
+$('#restoreFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const d=migrar(JSON.parse(await f.text()));DB=d;save();marcarCopia();renderHub()}catch(err){alert(err&&err.message?err.message:'No se pudo leer el archivo. ¿Es una copia .json del panel?')}e.target.value=''};
 
 /* ---------- DATOS DE COBRO ---------- */
 $('#btnSettings').onclick=()=>{const p=DB.profile;$('#sName').value=p.name||'';$('#sLegal').value=p.legal||'';$('#sEmail').value=p.email||'';$('#sCity').value=p.city||'';$('#sNext').value=DB.nextInvoice||1;$('#sPay').value=(p.payments||[]).map(x=>`${x.label} | ${x.detail}`).join('\n');$('#setModal').hidden=false};
